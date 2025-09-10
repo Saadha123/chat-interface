@@ -115,24 +115,24 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-md bg-white rounded shadow p-4 flex flex-col gap-4">
-        <div className="flex-1 overflow-y-auto h-96 border rounded p-2 bg-gray-100">
+  <div className="w-full max-w-md rounded-2xl shadow-lg p-6 flex flex-col gap-4 bg-gradient-to-br from-blue-50 via-white to-green-50 border-0">
+  <div className="flex-1 overflow-y-auto h-96 rounded-xl p-4 bg-white/80 shadow-inner">
           {messages.length === 0 ? (
             <div className="text-gray-400 text-center mt-20">No messages yet.</div>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-4">
               {messages.map((msg, i) => (
                 <div key={i} className={`flex items-end ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
                   {msg.sender === "ai" && (
-                    <div className="w-8 h-8 rounded-full bg-green-200 flex items-center justify-center mr-2">
+                    <div className="w-8 h-8 rounded-full bg-green-300 flex items-center justify-center mr-2 shadow">
                       <span role="img" aria-label="AI">🤖</span>
                     </div>
                   )}
-                  <div className={`max-w-xs px-4 py-2 rounded-lg shadow text-sm ${msg.sender === "user" ? "bg-blue-600 text-white" : "bg-white text-gray-800 border"}`}>
+                  <div className={`max-w-xs px-5 py-3 rounded-2xl shadow-md text-base font-medium ${msg.sender === "user" ? "bg-blue-100 text-gray-900" : "bg-gray-100 text-gray-900"}`}>
                     {msg.text}
                   </div>
                   {msg.sender === "user" && (
-                    <div className="w-8 h-8 rounded-full bg-blue-200 flex items-center justify-center ml-2">
+                    <div className="w-8 h-8 rounded-full bg-blue-300 flex items-center justify-center ml-2 shadow">
                       <span role="img" aria-label="User">🧑</span>
                     </div>
                   )}
@@ -149,28 +149,42 @@ export default function ChatPage() {
           )}
         </div>
         <div className="flex gap-2 items-center">
-          <input
-            className="flex-1 border rounded px-2 py-1"
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your message..."
-            disabled={loading}
-            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          />
+            <input
+              type="text"
+              className="flex-1 px-3 py-2 rounded border focus:outline-none focus:ring focus:border-blue-300 bg-white text-gray-900 placeholder-gray-500"
+              placeholder="Type your message..."
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              disabled={loading}
+            />
           <button
-            className="bg-blue-600 text-white px-4 py-1 rounded disabled:bg-blue-300"
+            className="bg-blue-500 hover:bg-blue-400 text-white px-4 py-1 rounded flex items-center justify-center disabled:bg-blue-300 transition-colors"
             onClick={sendMessage}
             disabled={loading || !input.trim()}
+            aria-label="Send"
           >
-            Send
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-5 h-5">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
           </button>
           <button
-            className={`bg-gray-600 text-white px-3 py-1 rounded ${recording ? "bg-red-600 animate-pulse" : ""}`}
+            className={`px-3 py-1 rounded-full flex items-center justify-center transition-colors shadow ${recording ? "bg-red-500 hover:bg-red-400" : "bg-green-500 hover:bg-green-400"}`}
             onClick={recording ? stopRecording : startRecording}
             disabled={loading}
+            aria-label={recording ? "Stop Recording" : "Start Recording"}
           >
-            {recording ? "Stop" : "Record"}
+            {recording ? (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-6 h-6">
+                <circle cx="12" cy="12" r="10" fill="white" stroke="currentColor" strokeWidth="2" />
+                <rect x="9" y="9" width="6" height="6" rx="1" fill="red" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-6 h-6">
+                <rect x="8" y="4" width="8" height="12" rx="4" fill="#222" />
+                <rect x="10" y="16" width="4" height="2" rx="1" fill="#222" />
+                <circle cx="12" cy="20" r="1" fill="#222" />
+              </svg>
+            )}
           </button>
           <audio ref={audioRef} hidden />
         </div>
