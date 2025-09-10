@@ -8,6 +8,8 @@ type Message = {
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [ttsLoading, setTtsLoading] = useState(false);
+  // ...existing code...
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -16,32 +18,51 @@ export default function ChatPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  // Play TTS for last AI message
+  // Only scroll to bottom on new message
   useEffect(() => {
-    // Scroll to bottom on new message
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-    // Play TTS for last AI message
-    if (messages.length === 0) return;
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg.sender === "ai") {
-      fetch("/api/tts", {
+  }, [messages]);
+
+  // Play TTS for AI message
+  const playTTS = async (text: string) => {
+    setTtsLoading(true);
+    console.log('playTTS called with text:', text);
+    try {
+      const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: lastMsg.text }),
-      })
-        .then((res) => res.arrayBuffer())
-        .then((buffer) => {
-          const blob = new Blob([buffer], { type: "audio/wav" });
-          const url = URL.createObjectURL(blob);
-          if (audioRef.current) {
-            audioRef.current.src = url;
-            audioRef.current.play();
-          }
-        });
+        body: JSON.stringify({ text }),
+      });
+      console.log('TTS response status:', res.status);
+      if (!res.ok) throw new Error("TTS failed");
+      console.log('TTS response headers:', Array.from(res.headers.entries()));
+      const blob = await res.blob();
+      console.log('TTS response blob size:', blob.size, 'type:', blob.type);
+      const url = URL.createObjectURL(blob);
+      if (audioRef.current) {
+        audioRef.current.src = url;
+        audioRef.current.onended = () => {
+          setTtsLoading(false);
+          URL.revokeObjectURL(url);
+        };
+        audioRef.current.onerror = (e) => {
+          setTtsLoading(false);
+          console.error('Audio playback error:', e);
+          alert('Audio playback failed.');
+        };
+        audioRef.current.play();
+      } else {
+        setTtsLoading(false);
+        alert('Audio element not found.');
+      }
+    } catch (err) {
+      setTtsLoading(false);
+      alert("Failed to play audio");
+      console.error('TTS error:', err);
     }
-  }, [messages]);
+  };
 
   // Start recording audio
   const startRecording = async () => {
@@ -115,8 +136,8 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
-  <div className="w-full max-w-md rounded-2xl shadow-lg p-6 flex flex-col gap-4 bg-gradient-to-br from-blue-50 via-white to-green-50 border-0">
-  <div className="flex-1 overflow-y-auto h-96 rounded-xl p-4 bg-white/80 shadow-inner">
+      <div className="w-full max-w-md rounded-2xl shadow-lg p-6 flex flex-col gap-4 bg-gradient-to-br from-blue-50 via-white to-green-50 border-0">
+        <div className="flex-1 overflow-y-auto h-96 rounded-xl p-4 bg-white/80 shadow-inner">
           {messages.length === 0 ? (
             <div className="text-gray-400 text-center mt-20">No messages yet.</div>
           ) : (
@@ -128,8 +149,22 @@ export default function ChatPage() {
                       <span role="img" aria-label="AI">🤖</span>
                     </div>
                   )}
-                  <div className={`max-w-xs px-5 py-3 rounded-2xl shadow-md text-base font-medium ${msg.sender === "user" ? "bg-blue-100 text-gray-900" : "bg-gray-100 text-gray-900"}`}>
-                    {msg.text}
+                  <div className="flex items-center">
+                    <div className={`max-w-xs px-5 py-3 rounded-2xl shadow-md text-base font-medium ${msg.sender === "user" ? "bg-blue-100 text-gray-900" : "bg-gray-100 text-gray-900"}`}>{msg.text}</div>
+                    {msg.sender === "ai" && (
+                      <button
+                        className="ml-2 bg-green-400 hover:bg-green-500 text-white rounded-full p-1 shadow flex items-center justify-center border border-green-300"
+                        onClick={() => playTTS(msg.text)}
+                        disabled={ttsLoading}
+                        aria-label="Play AI response"
+                        title="Play AI response"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" className="w-5 h-5">
+                          <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.18" />
+                          <polygon points="10,8 16,12 10,16" fill="white" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                   {msg.sender === "user" && (
                     <div className="w-8 h-8 rounded-full bg-blue-300 flex items-center justify-center ml-2 shadow">
@@ -149,16 +184,16 @@ export default function ChatPage() {
           )}
         </div>
         <div className="flex gap-2 items-center">
-            <input
-              type="text"
-              className="flex-1 px-3 py-2 rounded border focus:outline-none focus:ring focus:border-blue-300 bg-white text-gray-900 placeholder-gray-500"
-              placeholder="Type your message..."
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              disabled={loading}
-            />
+          <input
+            type="text"
+            className="flex-1 px-3 py-2 rounded border focus:outline-none focus:ring focus:border-blue-300 bg-white text-gray-900 placeholder-gray-500"
+            placeholder="Type your message..."
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            disabled={loading}
+          />
           <button
-            className="bg-blue-500 hover:bg-blue-400 text-white px-4 py-1 rounded flex items-center justify-center disabled:bg-blue-300 transition-colors"
+            className="bg-blue-500 hover:bg-blue-400 text-white p-2 rounded-full flex items-center justify-center disabled:bg-blue-300 transition-colors"
             onClick={sendMessage}
             disabled={loading || !input.trim()}
             aria-label="Send"
@@ -168,7 +203,7 @@ export default function ChatPage() {
             </svg>
           </button>
           <button
-            className={`px-3 py-1 rounded-full flex items-center justify-center transition-colors shadow ${recording ? "bg-red-500 hover:bg-red-400" : "bg-green-500 hover:bg-green-400"}`}
+            className={`px-3 py-1 rounded-full flex items-center justify-center transition-colors shadow ${recording ? "bg-red-500 hover:bg-red-400" : "bg-green-400 hover:bg-green-300"}`}
             onClick={recording ? stopRecording : startRecording}
             disabled={loading}
             aria-label={recording ? "Stop Recording" : "Start Recording"}
@@ -180,9 +215,7 @@ export default function ChatPage() {
               </svg>
             ) : (
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-6 h-6">
-                <rect x="8" y="4" width="8" height="12" rx="4" fill="#222" />
-                <rect x="10" y="16" width="4" height="2" rx="1" fill="#222" />
-                <circle cx="12" cy="20" r="1" fill="#222" />
+                <path d="M12 4a4 4 0 0 1 4 4v5a4 4 0 0 1-8 0V8a4 4 0 0 1 4-4zm0 13a6 6 0 0 0 6-6h2a8 8 0 0 1-16 0h2a6 6 0 0 0 6 6zm-1 3h2v2h-2v-2z" fill="#222" />
               </svg>
             )}
           </button>
@@ -190,5 +223,5 @@ export default function ChatPage() {
         </div>
       </div>
     </div>
-  );
+  )
 }
