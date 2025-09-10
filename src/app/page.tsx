@@ -1,103 +1,180 @@
-import Image from "next/image";
+"use client";
+import { useState, useRef, useEffect } from "react";
 
-export default function Home() {
+type Message = {
+  sender: "user" | "ai";
+  text: string;
+};
+
+export default function ChatPage() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [recording, setRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  // Play TTS for last AI message
+  useEffect(() => {
+    // Scroll to bottom on new message
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+    // Play TTS for last AI message
+    if (messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.sender === "ai") {
+      fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: lastMsg.text }),
+      })
+        .then((res) => res.arrayBuffer())
+        .then((buffer) => {
+          const blob = new Blob([buffer], { type: "audio/wav" });
+          const url = URL.createObjectURL(blob);
+          if (audioRef.current) {
+            audioRef.current.src = url;
+            audioRef.current.play();
+          }
+        });
+    }
+  }, [messages]);
+
+  // Start recording audio
+  const startRecording = async () => {
+    setRecording(true);
+    audioChunksRef.current = [];
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mediaRecorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = mediaRecorder;
+    mediaRecorder.ondataavailable = (e) => {
+      audioChunksRef.current.push(e.data);
+    };
+    mediaRecorder.onstop = async () => {
+      setRecording(false);
+      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+      const formData = new FormData();
+      formData.append("file", audioBlob, "audio.wav");
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.transcript) {
+        setInput("");
+        // Add transcribed text as a user message to the chat and send to AI
+        setMessages((msgs) => [...msgs, { sender: "user", text: data.transcript }]);
+        setLoading(true);
+        try {
+          const res = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: data.transcript }),
+          });
+          const aiData = await res.json();
+          setMessages((msgs) => [...msgs, { sender: "ai", text: aiData.reply } as Message]);
+        } catch {
+          setMessages((msgs) => [...msgs, { sender: "ai", text: "Error: Could not get response." } as Message]);
+        }
+        setLoading(false);
+      }
+    };
+    mediaRecorder.start();
+  };
+
+  // Stop recording audio
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && recording) {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    const userMsg: Message = { sender: "user", text: input };
+    setMessages((msgs) => [...msgs, userMsg]);
+    setInput("");
+    setLoading(true);
+    // Call OpenAI/chat API here
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: input }),
+      });
+      const data = await res.json();
+      setMessages((msgs) => [...msgs, { sender: "ai", text: data.reply } as Message]);
+    } catch {
+      setMessages((msgs) => [...msgs, { sender: "ai", text: "Error: Could not get response." } as Message]);
+    }
+    setLoading(false);
+  };
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
+      <div className="w-full max-w-md bg-white rounded shadow p-4 flex flex-col gap-4">
+        <div className="flex-1 overflow-y-auto h-96 border rounded p-2 bg-gray-100">
+          {messages.length === 0 ? (
+            <div className="text-gray-400 text-center mt-20">No messages yet.</div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {messages.map((msg, i) => (
+                <div key={i} className={`flex items-end ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
+                  {msg.sender === "ai" && (
+                    <div className="w-8 h-8 rounded-full bg-green-200 flex items-center justify-center mr-2">
+                      <span role="img" aria-label="AI">🤖</span>
+                    </div>
+                  )}
+                  <div className={`max-w-xs px-4 py-2 rounded-lg shadow text-sm ${msg.sender === "user" ? "bg-blue-600 text-white" : "bg-white text-gray-800 border"}`}>
+                    {msg.text}
+                  </div>
+                  {msg.sender === "user" && (
+                    <div className="w-8 h-8 rounded-full bg-blue-200 flex items-center justify-center ml-2">
+                      <span role="img" aria-label="User">🧑</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+          {loading && (
+            <div className="flex justify-center items-center mt-2">
+              <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-600"></div>
+              <span className="ml-2 text-blue-600 text-sm">AI is thinking...</span>
+            </div>
+          )}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+        <div className="flex gap-2 items-center">
+          <input
+            className="flex-1 border rounded px-2 py-1"
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type your message..."
+            disabled={loading}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          <button
+            className="bg-blue-600 text-white px-4 py-1 rounded disabled:bg-blue-300"
+            onClick={sendMessage}
+            disabled={loading || !input.trim()}
+          >
+            Send
+          </button>
+          <button
+            className={`bg-gray-600 text-white px-3 py-1 rounded ${recording ? "bg-red-600 animate-pulse" : ""}`}
+            onClick={recording ? stopRecording : startRecording}
+            disabled={loading}
+          >
+            {recording ? "Stop" : "Record"}
+          </button>
+          <audio ref={audioRef} hidden />
+        </div>
+      </div>
     </div>
   );
 }
